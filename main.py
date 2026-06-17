@@ -19,23 +19,22 @@ st.set_page_config(
 
 # ── 한글 폰트 설정 ────────────────────────────────────────────────
 @st.cache_resource
-def set_korean_font():
-    """시스템에서 한글 폰트를 찾아 설정"""
-    font_candidates = [
-        "NanumGothic", "NanumBarunGothic", "Malgun Gothic",
-        "AppleGothic", "Noto Sans CJK KR", "DejaVu Sans"
-    ]
-    available = [f.name for f in fm.fontManager.ttflist]
-    for font in font_candidates:
-        if font in available:
-            plt.rcParams["font.family"] = font
-            plt.rcParams["axes.unicode_minus"] = False
-            return font
-    plt.rcParams["axes.unicode_minus"] = False
-    return "DejaVu Sans"
-
-font_name = set_korean_font()
-
+def style_fig(fig, title=None, height=420):
+    fig.update_layout(
+        title=dict(text=title, font=dict(color=ACCENT, size=16)) if title else None,
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=PAPER_BG,
+        font=dict(color=FONT_COLOR),   # ← family 부분을 통째로 삭제!
+        height=height,
+        margin=dict(l=40, r=30, t=50, b=40),
+        legend=dict(bgcolor="rgba(13,33,55,0.6)", bordercolor=ACCENT, borderwidth=1),
+        hoverlabel=dict(bgcolor="#0d2137", font_size=12),
+    )
+    fig.update_xaxes(gridcolor="rgba(0,212,255,0.1)", zerolinecolor="rgba(0,212,255,0.2)",
+                     color=FONT_COLOR)
+    fig.update_yaxes(gridcolor="rgba(0,212,255,0.1)", zerolinecolor="rgba(0,212,255,0.2)",
+                     color=FONT_COLOR)
+    return fig
 # ── CSS 스타일 ────────────────────────────────────────────────────
 st.markdown("""
 <style>
