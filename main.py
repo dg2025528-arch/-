@@ -654,6 +654,6 @@ st.markdown("""
 <div style='text-align:center; color:#4a8fa8; font-size:0.85rem; padding:15px 0;'>
 🌊 Ocean Acidification & Ecosystem Decline Dashboard |
 데이터 출처: 해양 기후 관측 데이터셋 (2015–2023) |
-당곡고등학교 해양환경 프로젝트
+made by 20112박하민, 20515윤혁빈, 20327홍의찬
 </div>
 """, unsafe_allow_html=True)
