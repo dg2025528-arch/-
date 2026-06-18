@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -19,10 +18,11 @@ st.set_page_config(
 )
 
 # ── 공통 색상 ─────────────────────────────────────────────────────
-PLOT_BG    = "#0a1a2e"
-PAPER_BG   = "#0d2137"
+PLOT_BG = "#0a1a2e"
+PAPER_BG = "#0d2137"
 FONT_COLOR = "#c8eef5"
-ACCENT     = "#00d4ff"
+ACCENT = "#00d4ff"
+
 
 def style_fig(fig, title=None, height=420):
     fig.update_layout(
@@ -40,6 +40,7 @@ def style_fig(fig, title=None, height=420):
     fig.update_yaxes(gridcolor="rgba(0,212,255,0.1)",
                      zerolinecolor="rgba(0,212,255,0.2)", color=FONT_COLOR)
     return fig
+
 
 # ── CSS ───────────────────────────────────────────────────────────
 st.markdown("""
@@ -103,12 +104,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # ── 데이터 로드 ───────────────────────────────────────────────────
 @st.cache_data
 def load_data():
     df = pd.read_csv("realistic_ocean_climate_dataset.csv")
     df["Date"] = pd.to_datetime(df["Date"])
-    df["Year"]  = df["Date"].dt.year
+    df["Year"] = df["Date"].dt.year
     df["Month"] = df["Date"].dt.month
     severity_map = {"None": 0, "Low": 1, "Medium": 2, "High": 3}
     df["Bleaching_Num"] = df["Bleaching Severity"].map(severity_map)
@@ -117,36 +119,44 @@ def load_data():
     )
     return df
 
+
 df = load_data()
 
+
 # ── 회귀모델 학습 ─────────────────────────────────────────────────
-@st.cache_data
-def train_model(df):
+@st.cache_resource
+def train_model(_df):
     features = ["pH Level", "SST (°C)", "Bleaching_Num", "Heatwave_Num"]
-    df_model = df.dropna(subset=features + ["Species Observed"])
+    df_model = _df.dropna(subset=features + ["Species Observed"])
     X = df_model[features].values
     y = df_model["Species Observed"].values
-    model = LinearRegression()
-    model.fit(X, y)
-    score = model.score(X, y)
-    return model, score
+    reg = LinearRegression()
+    reg.fit(X, y)
+    score = reg.score(X, y)
+    return reg, score
 
-# 연도별 추세 회귀
+
 @st.cache_data
-def calc_yearly_trend(df):
-    yearly = df.groupby("Year").agg(
+def calc_yearly_trend(_df):
+    yearly_df = _df.groupby("Year").agg(
         pH_mean=("pH Level", "mean"),
         SST_mean=("SST (°C)", "mean"),
         Species_mean=("Species Observed", "mean"),
     ).reset_index()
-    trends = {}
+    trend_dict = {}
     for col in ["pH_mean", "SST_mean", "Species_mean"]:
-        slope, intercept, r, p, _ = stats.linregress(yearly["Year"], yearly[col])
-        trends[col] = {"slope": slope, "intercept": intercept, "r": r}
-    return yearly, trends
+        slope, intercept, r, p, _ = stats.linregress(yearly_df["Year"], yearly_df[col])
+        trend_dict[col] = {"slope": slope, "intercept": intercept, "r": r}
+    return yearly_df, trend_dict
+
 
 model, model_score = train_model(df)
 yearly, trends = calc_yearly_trend(df)
+
+# 자주 쓰는 평균값 미리 계산
+ph_avg = df["pH Level"].mean()
+sst_avg = df["SST (°C)"].mean()
+current_avg = df["Species Observed"].mean()
 
 # ── 헤더 ─────────────────────────────────────────────────────────
 st.markdown("""
@@ -164,6 +174,42 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
+
+# ════════════════════════════════════════════════════════
+# 사이드바 슬라이더 (먼저 정의)
+# ════════════════════════════════════════════════════════
+with st.sidebar:
+    st.markdown("## 🎚️ 환경 조건 설정")
+    st.markdown("---")
+
+    st.markdown("### 🧪 pH 설정")
+    sim_ph = st.slider("pH 수준", min_value=7.6, max_value=8.4,
+                       value=float(ph_avg), step=0.01,
+                       help="낮을수록 산성화 심각")
+
+    st.markdown("### 🌡️ 수온 설정")
+    sim_sst = st.slider("수면 수온 (°C)", min_value=22.0, max_value=35.0,
+                        value=float(sst_avg), step=0.1,
+                        help="높을수록 열파 위험 증가")
+
+    st.markdown("### 🪸 백화 심각도")
+    sev_options = {"없음": 0, "낮음": 1, "중간": 2, "높음": 3}
+    sim_sev_label = st.select_slider("백화 심각도",
+                                     options=["없음", "낮음", "중간", "높음"],
+                                     value="낮음")
+    sim_sev = sev_options[sim_sev_label]
+
+    st.markdown("### 🌊 해양열파")
+    sim_hw = st.radio("해양열파 발생", ["없음", "있음"])
+    sim_hw_num = 1 if sim_hw == "있음" else 0
+
+    st.markdown("---")
+    st.markdown("### 📊 현재 데이터 평균")
+    st.markdown(f"- **평균 pH**: {ph_avg:.3f}")
+    st.markdown(f"- **평균 수온**: {sst_avg:.1f}°C")
+    st.markdown(f"- **평균 종 수**: {current_avg:.0f}종")
+
+
 # ════════════════════════════════════════════════════════
 # PART 1. 미래 추세 예측 (2024~2030)
 # ════════════════════════════════════════════════════════
@@ -176,19 +222,15 @@ st.markdown("""
 </div>""", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 예측 연도
 future_years = list(range(2024, 2031))
-all_years    = list(yearly["Year"]) + future_years
 
-# 예측값 계산
-pred_ph  = [trends["pH_mean"]["slope"] * y + trends["pH_mean"]["intercept"]
-            for y in future_years]
-pred_sst = [trends["SST_mean"]["slope"] * y + trends["SST_mean"]["intercept"]
-            for y in future_years]
-pred_sp  = [trends["Species_mean"]["slope"] * y + trends["Species_mean"]["intercept"]
-            for y in future_years]
+pred_ph = [trends["pH_mean"]["slope"] * yr + trends["pH_mean"]["intercept"]
+           for yr in future_years]
+pred_sst = [trends["SST_mean"]["slope"] * yr + trends["SST_mean"]["intercept"]
+            for yr in future_years]
+pred_sp = [trends["Species_mean"]["slope"] * yr + trends["Species_mean"]["intercept"]
+           for yr in future_years]
 
-# 3개 서브플롯
 fig = make_subplots(
     rows=1, cols=3,
     subplot_titles=("평균 pH 예측", "평균 수온(°C) 예측", "평균 관측 종 수 예측")
@@ -196,12 +238,11 @@ fig = make_subplots(
 
 plot_data = [
     (1, "pH_mean", pred_ph, "#00d4ff", "pH"),
-    (2, "SST_mean", pred_sst, "#ff6b6b", "수온(°C)"),
-    (3, "Species_mean", pred_sp, "#2ecc71", "종 수"),
+    (2, "SST_mean", pred_sst, "#ff6b6b", "수온"),
+    (3, "Species_mean", pred_sp, "#2ecc71", "종수"),
 ]
 
 for col_n, obs_col, pred_vals, color, name in plot_data:
-    # 실제 관측값 (실선)
     fig.add_trace(go.Scatter(
         x=list(yearly["Year"]), y=list(yearly[obs_col]),
         mode="lines+markers", name=f"실제 {name}",
@@ -209,15 +250,13 @@ for col_n, obs_col, pred_vals, color, name in plot_data:
         showlegend=(col_n == 1)
     ), row=1, col=col_n)
 
-    # 연결선 (실제 마지막 ~ 예측 첫값)
     fig.add_trace(go.Scatter(
-        x=[yearly["Year"].iloc[-1], future_years[0]],
-        y=[yearly[obs_col].iloc[-1], pred_vals[0]],
+        x=[int(yearly["Year"].iloc[-1]), future_years[0]],
+        y=[float(yearly[obs_col].iloc[-1]), pred_vals[0]],
         mode="lines", line=dict(color=color, width=2, dash="dot"),
         showlegend=False
     ), row=1, col=col_n)
 
-    # 예측값 (점선)
     fig.add_trace(go.Scatter(
         x=future_years, y=pred_vals,
         mode="lines+markers", name=f"예측 {name}",
@@ -226,7 +265,6 @@ for col_n, obs_col, pred_vals, color, name in plot_data:
         showlegend=(col_n == 1)
     ), row=1, col=col_n)
 
-    # 예측 구간 음영
     fig.add_vrect(
         x0=2023.5, x1=2030.5,
         fillcolor=color, opacity=0.05,
@@ -238,25 +276,25 @@ fig = style_fig(fig, "현재 추세 연장 예측 (점선: 예측 구간)", heig
 fig.update_annotations(font=dict(color=ACCENT, size=13))
 st.plotly_chart(fig, use_container_width=True)
 
-# 2030년 예측값 카드
 st.markdown("##### 📌 2030년 예측값 요약")
 c1, c2, c3 = st.columns(3)
+
 
 def trend_card(col, label, current, predicted, unit, reverse=False):
     diff = predicted - current
     is_bad = (diff < 0) if not reverse else (diff > 0)
     color = "#e74c3c" if is_bad else "#2ecc71"
     arrow = "▼" if diff < 0 else "▲"
+    bg = "rgba(231,76,60,0.1)" if is_bad else "rgba(46,204,113,0.1)"
     col.markdown(f"""
-    <div style='background:{"rgba(231,76,60,0.1)" if is_bad else "rgba(46,204,113,0.1)"};
-         border:1px solid {color}; border-radius:12px; padding:18px; text-align:center;'>
+    <div style='background:{bg}; border:1px solid {color};
+         border-radius:12px; padding:18px; text-align:center;'>
         <div style='color:#7ecfdf; font-size:0.85rem;'>{label}</div>
         <div style='color:{color}; font-size:2rem; font-weight:900;'>{predicted:.2f}{unit}</div>
         <div style='color:#c8eef5; font-size:0.85rem;'>현재 평균: {current:.2f}{unit}</div>
-        <div style='color:{color}; font-size:1rem; font-weight:bold;'>
-            {arrow} {abs(diff):.2f}{unit}
-        </div>
+        <div style='color:{color}; font-size:1rem; font-weight:bold;'>{arrow} {abs(diff):.2f}{unit}</div>
     </div>""", unsafe_allow_html=True)
+
 
 trend_card(c1, "🧪 2030년 예상 pH",
            yearly["pH_mean"].mean(), pred_ph[-1], "", reverse=False)
@@ -265,19 +303,22 @@ trend_card(c2, "🌡️ 2030년 예상 수온",
 trend_card(c3, "🐠 2030년 예상 종 수",
            yearly["Species_mean"].mean(), pred_sp[-1], "종", reverse=False)
 
+# f-string 밖에서 미리 해석 문장 계산
+ph_trend_txt = "감소(산성화 진행)" if trends["pH_mean"]["slope"] < 0 else "증가"
+sst_trend_txt = "상승" if trends["SST_mean"]["slope"] > 0 else "하강"
+sp_trend_txt = "감소" if trends["Species_mean"]["slope"] < 0 else "증가"
+
 st.markdown(f"""
 <br>
 <div class='info-box'>
 📌 <b>추세 해석</b><br>
-• pH: 연간 <b>{trends['pH_mean']['slope']:+.4f}</b> 변화
-  → 2030년까지 {'감소(산성화 진행)' if trends['pH_mean']['slope'] < 0 else '증가'} 예상<br>
-• 수온: 연간 <b>{trends['SST_mean']['slope']:+.4f}°C</b> 변화
-  → 2030년까지 {'상승' if trends['SST_mean']['slope'] > 0 else '하강'} 예상<br>
-• 관측 종 수: 연간 <b>{trends['Species_mean']['slope']:+.4f}종</b> 변화
-  → 2030년까지 {'감소' if trends['Species_mean']['slope'] < 0 else '증가'} 예상
+• pH: 연간 <b>{trends['pH_mean']['slope']:+.4f}</b> 변화 → 2030년까지 {ph_trend_txt} 예상<br>
+• 수온: 연간 <b>{trends['SST_mean']['slope']:+.4f}°C</b> 변화 → 2030년까지 {sst_trend_txt} 예상<br>
+• 관측 종 수: 연간 <b>{trends['Species_mean']['slope']:+.4f}종</b> 변화 → 2030년까지 {sp_trend_txt} 예상
 </div>""", unsafe_allow_html=True)
 
 st.markdown("<br><br>", unsafe_allow_html=True)
+
 
 # ════════════════════════════════════════════════════════
 # PART 2. 직접 조작 시뮬레이션
@@ -286,6 +327,209 @@ st.markdown("<div class='section-header'>🎚️ PART 2. 내가 직접 환경을
             unsafe_allow_html=True)
 st.markdown("""
 <div class='warning-box'>
-🎮 아래 슬라이더로 해양 환경 조건을 직접 바꿔보세요.
+🎮 왼쪽 사이드바의 슬라이더로 해양 환경 조건을 직접 바꿔보세요.
 조건을 바꾸면 <b>예상 생물종 수가 실시간으로 변화</b>합니다.<br>
-실제 데이터 범위:
+실제 데이터 범위: pH (7.87 ~ 8.20) / 수온 (23.6°C ~ 33.2°C)
+</div>""", unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# 예측 실행
+input_vals = np.array([[sim_ph, sim_sst, sim_sev, sim_hw_num]])
+predicted_species = float(model.predict(input_vals)[0])
+predicted_species = max(0.0, predicted_species)
+
+diff_from_avg = predicted_species - current_avg
+diff_pct = (diff_from_avg / current_avg) * 100
+
+# 위험도 판별
+if predicted_species >= current_avg * 0.9:
+    risk_level = "안전"
+    risk_color = "#2ecc71"
+    risk_class = "result-safe"
+    risk_emoji = "✅"
+    risk_msg = "현재 수준과 비슷하게 생태계가 유지되고 있어요."
+elif predicted_species >= current_avg * 0.7:
+    risk_level = "주의"
+    risk_color = "#f39c12"
+    risk_class = "result-warning"
+    risk_emoji = "⚠️"
+    risk_msg = "생태계가 일부 위협받고 있어요. 환경 개선이 필요합니다."
+else:
+    risk_level = "위험"
+    risk_color = "#e74c3c"
+    risk_class = "result-danger"
+    risk_emoji = "🚨"
+    risk_msg = "생태계가 심각하게 위협받고 있어요! 즉각적인 환경 대응이 필요합니다."
+
+# 결과 카드
+col_res1, col_res2, col_res3 = st.columns(3)
+
+with col_res1:
+    st.markdown(f"""
+    <div class='result-card {risk_class}'>
+        <div style='color:{risk_color}; font-size:1rem;'>예상 생물종 수</div>
+        <div class='result-value' style='color:{risk_color};'>{predicted_species:.0f}종</div>
+        <div class='result-label'>현재 평균: {current_avg:.0f}종</div>
+    </div>""", unsafe_allow_html=True)
+
+with col_res2:
+    arrow2 = "▲" if diff_from_avg > 0 else "▼"
+    color2 = "#2ecc71" if diff_from_avg > 0 else "#e74c3c"
+    st.markdown(f"""
+    <div class='result-card' style='background:linear-gradient(135deg,#0d2a3e,#0a3352);
+         border:2px solid {color2};'>
+        <div style='color:{color2}; font-size:1rem;'>현재 평균 대비</div>
+        <div class='result-value' style='color:{color2};'>{arrow2}{abs(diff_pct):.1f}%</div>
+        <div class='result-label'>{arrow2} {abs(diff_from_avg):.1f}종</div>
+    </div>""", unsafe_allow_html=True)
+
+with col_res3:
+    st.markdown(f"""
+    <div class='result-card {risk_class}'>
+        <div style='color:{risk_color}; font-size:1rem;'>생태계 위험도</div>
+        <div class='result-value' style='color:{risk_color};'>{risk_emoji} {risk_level}</div>
+        <div class='result-label'>{risk_msg}</div>
+    </div>""", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# 게이지 차트
+fig = go.Figure(go.Indicator(
+    mode="gauge+number+delta",
+    value=predicted_species,
+    delta={"reference": current_avg, "valueformat": ".0f",
+           "increasing": {"color": "#2ecc71"},
+           "decreasing": {"color": "#e74c3c"}},
+    gauge={
+        "axis": {"range": [0, 200], "tickcolor": FONT_COLOR},
+        "bar": {"color": risk_color},
+        "bgcolor": PLOT_BG,
+        "steps": [
+            {"range": [0, current_avg * 0.7], "color": "rgba(231,76,60,0.2)"},
+            {"range": [current_avg * 0.7, current_avg * 0.9], "color": "rgba(243,156,18,0.2)"},
+            {"range": [current_avg * 0.9, 200], "color": "rgba(46,204,113,0.2)"},
+        ],
+        "threshold": {
+            "line": {"color": "#ffffff", "width": 3},
+            "thickness": 0.75,
+            "value": current_avg
+        }
+    },
+    title={"text": "예상 생물종 수 (흰선: 현재 평균)",
+           "font": {"color": ACCENT, "size": 14}},
+    number={"suffix": "종", "font": {"color": risk_color, "size": 40}}
+))
+fig.update_layout(
+    paper_bgcolor=PAPER_BG, font=dict(color=FONT_COLOR), height=380,
+    margin=dict(l=30, r=30, t=60, b=30)
+)
+st.plotly_chart(fig, use_container_width=True)
+
+# pH & 수온 변화 곡선
+st.markdown("<div class='section-header'>📊 pH / 수온 변화에 따른 종 수 변화 곡선</div>",
+            unsafe_allow_html=True)
+
+col_g1, col_g2 = st.columns(2)
+
+with col_g1:
+    ph_range = np.linspace(7.6, 8.4, 100)
+    sp_by_ph = model.predict(
+        np.column_stack([ph_range,
+                         np.full(100, sim_sst),
+                         np.full(100, sim_sev),
+                         np.full(100, sim_hw_num)])
+    )
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=ph_range, y=sp_by_ph, mode="lines",
+        line=dict(color=ACCENT, width=3), name="예상 종 수"
+    ))
+    fig.add_vline(x=sim_ph, line_dash="dash", line_color="#ffffff", line_width=2,
+                  annotation_text=f"설정 pH: {sim_ph:.2f}",
+                  annotation_font_color="#ffffff")
+    fig.add_hline(y=current_avg, line_dash="dot", line_color="#f39c12",
+                  annotation_text=f"평균: {current_avg:.0f}종",
+                  annotation_font_color="#f39c12")
+    fig = style_fig(fig, "pH 변화 → 종 수 변화", height=380)
+    fig.update_layout(xaxis_title="pH", yaxis_title="예상 종 수")
+    st.plotly_chart(fig, use_container_width=True)
+
+with col_g2:
+    sst_range = np.linspace(22.0, 35.0, 100)
+    sp_by_sst = model.predict(
+        np.column_stack([np.full(100, sim_ph),
+                         sst_range,
+                         np.full(100, sim_sev),
+                         np.full(100, sim_hw_num)])
+    )
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=sst_range, y=sp_by_sst, mode="lines",
+        line=dict(color="#ff6b6b", width=3), name="예상 종 수"
+    ))
+    fig.add_vline(x=sim_sst, line_dash="dash", line_color="#ffffff", line_width=2,
+                  annotation_text=f"설정 수온: {sim_sst:.1f}°C",
+                  annotation_font_color="#ffffff")
+    fig.add_hline(y=current_avg, line_dash="dot", line_color="#f39c12",
+                  annotation_text=f"평균: {current_avg:.0f}종",
+                  annotation_font_color="#f39c12")
+    fig = style_fig(fig, "수온 변화 → 종 수 변화", height=380)
+    fig.update_layout(xaxis_title="수온(°C)", yaxis_title="예상 종 수")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ════════════════════════════════════════════════════════
+# PART 3. 현재 추세 vs 내 설정 비교
+# ════════════════════════════════════════════════════════
+st.markdown("<div class='section-header'>📊 PART 3. 현재 추세 vs 내 시뮬레이션 비교</div>",
+            unsafe_allow_html=True)
+
+comp_labels = ["현재 평균 (2015~2023)", "추세 예측 (2030년)", "내 시뮬레이션 설정값"]
+comp_values = [current_avg, pred_sp[-1], predicted_species]
+comp_colors = ["#00d4ff", "#f39c12", risk_color]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=comp_labels, y=comp_values,
+    marker_color=comp_colors,
+    text=[f"{v:.1f}종" for v in comp_values],
+    textposition="outside", width=0.5
+))
+fig.add_hline(y=current_avg, line_dash="dot", line_color="#ffffff",
+              annotation_text="현재 평균선", annotation_font_color="#ffffff")
+fig = style_fig(fig, "현재 평균 vs 2030 추세 예측 vs 내 시뮬레이션 비교", height=450)
+fig.update_layout(yaxis_title="예상 생물종 수", showlegend=False,
+                  yaxis=dict(range=[0, max(comp_values) * 1.2]))
+st.plotly_chart(fig, use_container_width=True)
+
+# 최종 결론 (f-string 밖에서 미리 계산)
+st.markdown("<div class='section-header'>💡 시뮬레이션 결론</div>",
+            unsafe_allow_html=True)
+
+ph_comment = "(현재 평균보다 낮음 → 산성화 심화)" if sim_ph < ph_avg \
+    else "(현재 평균보다 높음 → 산성화 완화)"
+sst_comment = "(현재 평균보다 높음 → 열파 위험 증가)" if sim_sst > sst_avg \
+    else "(현재 평균보다 낮음 → 열파 위험 감소)"
+diff_comment = "감소" if diff_from_avg < 0 else "증가"
+model_comment = "데이터를 비교적 잘 설명하는 모델이에요." if model_score > 0.3 \
+    else "데이터 변동성이 커서 예측의 불확실성이 있어요. 탐구 참고용으로 활용하세요."
+
+st.markdown(f"""
+<div class='info-box'>
+🎯 <b>내 시뮬레이션 설정 요약</b><br>
+• pH: <b>{sim_ph:.2f}</b> {ph_comment}<br>
+• 수온: <b>{sim_sst:.1f}°C</b> {sst_comment}<br>
+• 백화 심각도: <b>{sim_sev_label}</b><br>
+• 해양열파: <b>{sim_hw}</b><br><br>
+📊 <b>예측 결과</b>: 이 조건에서 예상 생물종 수는 <b>{predicted_species:.0f}종</b>으로,
+현재 평균({current_avg:.0f}종) 대비
+<b>{diff_comment} ({abs(diff_pct):.1f}%)</b>가 예상됩니다.<br><br>
+🌊 <b>모델 정확도(R²)</b>: {model_score:.3f} → {model_comment}
+</div>""", unsafe_allow_html=True)
+
+# ── 하단 ─────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("""
+<div style='text-align:center; color:#4a8fa8; font-size:0.8rem; padding:10px 0;'>
+🔮 미래 해양 생태계 시뮬레이션 | 당곡고등학교 해양환경 탐구 프로젝트
+</div>""", unsafe_allow_html=True)
