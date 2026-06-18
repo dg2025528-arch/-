@@ -143,11 +143,9 @@ streamlit run Home.py
 
 ## 📚 참고 자료
 
-> ✏️ *(직접 확인한 출처를 여기에 작성하세요)*
-
-- 
-- 
-- 
+- [NOAA 해양 산성화 정보](https://oceanacidification.noaa.gov)
+- [IPCC 해양 및 빙권 특별 보고서](https://www.ipcc.ch/srocc/)
+- [산호 백화 현상 (GBRMPA)](https://www.gbrmpa.gov.au)
 
 ---
 
